@@ -5,7 +5,9 @@ class Emoji():
             ":x:" : "\U0000274C",
             ":white_check_mark:" : "\U00002705",
             ":wave:" : "\U0001F44B",
-            ":thumbs_up:" : "\U0001F44D"
+            ":thumbs_up:" : "\U0001F44D",
+            ":question:" : "\U00002753",
+
         }
 
     def __init__(self, emoji):

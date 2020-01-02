@@ -4,6 +4,7 @@ import sys
 import game
 import discord
 import re
+import threading
 
 class Bot():
     def __init__(self, client):
@@ -19,11 +20,24 @@ class Bot():
             "type" : [Bot.type, "Type for a little while."],
             "newgame" : [Bot.newgame, "Start a new game of wereword."],
             "state" : [Bot.state, "Print the state of the current game."],
+            "roles" : [Bot.roles, "Print each member in the game and what role they were."],
+            "endgame" : [Bot.game_over, "End the current game"],
             "help" : [Bot.help, "Show the available commands."]
         }
 
         self.client = client
         self.current_game = None
+
+    async def bot_loop(self):
+        if self.current_game is None:
+            return
+
+        if self.current_game.game_state == "Game in progress.":
+            if time.time() > self.current_game.end_time > 0:
+                await self.end_game(False, "You have ran out of time!")
+
+            if self.current_game.tokens_left == 0:
+                await self.end_game(False, "You have used up your tokens!")
 
     async def send_dm(self, user, message):
         dm = user.dm_channel
@@ -46,12 +60,12 @@ class Bot():
             if type(message.channel) is discord.channel.DMChannel:
                 await self.handle_dm(message)
 
-            elif match := re.match("^\*\*.*\*\*$", message.content):
+            elif match := re.match("^\*\*.*\*\*", message.content):
                 await self.handle_game_message(message)
 
     async def handle_dm(self, message):
         if message.author == self.current_game.mayor:
-            if self.current_game.state() == "Waiting for Mayor to pick a word.":
+            if self.current_game.game_state == "Waiting for Mayor to pick a word.":
                 if message.content in "123":
                     i = int(message.content)
                     word = self.word_choices[i-1]
@@ -66,9 +80,61 @@ class Bot():
 
                     await self.game_channel.send("The game has started!")
 
+                    self.current_game.end_time = time.time() + (5 * 60)
+
+    async def end_game(self, word_guessed, message):
+        await self.game_channel.send(message)
+
+        if not word_guessed:
+            self.current_game.game_state = "Voting for Werewolf."
+
+            await self.game_channel.send("The secret word was: {}".format(self.current_game.word))
+
+            await self.game_channel.send("Now you must vote on who you think the werewolf was")
+
+        else:
+            self.current_game.game_state = "Voting for Seer."
+
+            wolves = self.current_game.get_werewolves()
+
+            msg = "The werewolf was {}"
+
+            if len(wolves) > 1:
+                msg = "The werewolves were {}"
+
+            await self.game_channel.send(msg.format(", ".join(wolf.name for wolf in wolves)))
+            await self.game_channel.send("They will vote on who they think the seer was.")
+
     async def handle_game_message(self, message):
-        if self.current_game.state() == "Game in progress.":
-            await message.channel.send("That was a game message!")
+        if self.current_game.game_state == "Game in progress.":
+            print("That was a game message!")
+
+            if message.author == self.current_game.mayor:
+                return
+ 
+            if match := re.search("^\*\*(.*)\*\*$", message.content):
+                self.current_game.pending_questions.append(message)
+
+                await message.add_reaction(str(Emoji(":white_check_mark:")))
+                await message.add_reaction(str(Emoji(":x:")))
+                await message.add_reaction(str(Emoji(":question:")))
+
+                correct = discord.utils.get(message.channel.guild.emojis, name="correct")
+                await message.add_reaction(correct)
+
+    async def handle_reaction_add(self, reaction, user):
+        if reaction.message in self.current_game.pending_questions and user == self.current_game.mayor:
+
+            if type(reaction.emoji) is discord.Emoji:
+                if reaction.emoji.name == "correct":
+                    await self.end_game(True, "You have guessed the word!")
+
+            if str(reaction) in (str(Emoji(":white_check_mark:")), str(Emoji(":x:"))):
+                self.current_game.tokens_left -= 1
+
+            self.current_game.pending_questions.remove(reaction.message)
+
+            print(self.current_game.tokens_left)
 
     async def hello(self, message):
         await message.channel.send('hello!')
@@ -142,9 +208,9 @@ class Bot():
         if self.client.user in players:
             players.remove(self.client.user)
 
-#        if len(players) < 2:
-#            await message.channel.send("You must @mention at least two players to start a game.")
-#            return
+        if len(players) < 2:
+            await message.channel.send("You must @mention at least two players to start a game.")
+            return
 
         await message.channel.send("Players: {}".format(", ".join(member.name for member in message.mentions)))
 
@@ -170,23 +236,35 @@ class Bot():
                 other_wolves.remove(user)
 
                 if len(other_wolves) > 0:
-                    msg += "The other werewolves are: {}\n".format(", ".join(other_wolves))
+                    msg += "The other werewolves are: {}\n".format(", ".join(wolf.name for wolf in other_wolves))
 
             if user == self.current_game.mayor:
                 self.word_choices = self.current_game.get_word_choices()
                 word_choices_str = "\n".join("{}: {}".format(i + 1, word) for i, word in enumerate(self.word_choices))
 
                 msg += "Please choose a word:\n{}".format(word_choices_str)
-                # await self.send_dm(user, "Please choose a word:\n{}".format(word_choices_str))
 
             await self.send_dm(user, msg)
+
+    async def roles(self, message):
+        if None in (self.game_channel, self.current_game):
+            return
+
+        await self.game_channel.send(self.current_game.role_msg)
+
+    async def game_over(self, message):
+        await self.roles(message)
+
+        self.current_game = None
 
     async def state(self, message):
         if self.current_game is None:
             await message.channel.send("No game running.")
             return
 
-        await message.channel.send(self.current_game.state())
+        await message.channel.send(self.current_game.game_state)
+        if self.current_game.game_state == "Game in progress." and self.current_game.end_time > 0:
+            await message.channel.send("{} seconds left".format(int(self.current_game.end_time - time.time())))
 
     async def help(self, message):
         await message.channel.send("\n".join("{} -> {}".format(com, com_data[1]) for com, com_data in self.commands.items()))

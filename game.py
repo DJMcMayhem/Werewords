@@ -17,15 +17,19 @@ class Game():
 
         random.shuffle(self.roles)
 
-        for player, role in zip(self.players, self.roles):
-            print("{}: {}".format(player, role))
+        self.role_msg = ""
 
-        print("{} Chosen as Mayor!".format(self.mayor))
+        for player, role in zip(self.players, self.roles):
+            self.role_msg += "{}: {}\n".format(player.name, role)
 
         with open("wordlist.txt") as words:
             self.words = [word.strip() for word in words.readlines()]
 
         self.game_state = "Waiting for Mayor to pick a word."
+        self.pending_questions = []
+        self.answered_questions = []
+        self.tokens_left = 36
+        self.end_time = 0
 
     def get_user_role(self, user):
         try:
@@ -33,9 +37,6 @@ class Game():
             return self.roles[i]
         except:
             return "Unkown"
-
-    def state(self):
-        return self.game_state
 
     def get_word_choices(self):
         random.shuffle(self.words)
@@ -54,3 +55,5 @@ class Game():
                 wolves.append(player)
 
         return wolves
+
+
