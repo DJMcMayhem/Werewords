@@ -80,7 +80,7 @@ class Bot():
 
                     await self.game_channel.send("The game has started!")
 
-                    self.current_game.end_time = time.time() + (5 * 60)
+                    self.current_game.end_time = time.time() + (10 * 60)
 
     async def end_game(self, word_guessed, message):
         await self.game_channel.send(message)
@@ -214,7 +214,7 @@ class Bot():
 
         await message.channel.send("Players: {}".format(", ".join(member.name for member in message.mentions)))
 
-        self.current_game = game.Game(players)
+        self.current_game = game.Game(players, message.author)
 
         await message.channel.send("Mayor: {}".format(self.current_game.mayor.name))
         await message.channel.send("Roles: {}".format(", ".join(sorted(self.current_game.roles))))
@@ -265,6 +265,8 @@ class Bot():
         await message.channel.send(self.current_game.game_state)
         if self.current_game.game_state == "Game in progress." and self.current_game.end_time > 0:
             await message.channel.send("{} seconds left".format(int(self.current_game.end_time - time.time())))
+
+            await message.channel.send("{} Yes/No answers left".format(self.current_game.tokens_left))
 
     async def help(self, message):
         await message.channel.send("\n".join("{} -> {}".format(com, com_data[1]) for com, com_data in self.commands.items()))

@@ -7,10 +7,10 @@ class Player():
         self.questions = { "yes" : 0, "no" : 0, "maybe": 0 }
 
 class Game():
-    def __init__(self, players):
+    def __init__(self, players, mayor):
         self.players = players
 
-        self.mayor = random.choice(players)
+        self.mayor = mayor
 
         self.roles = ["Werewolf", "Seer"]
         self.roles += (["Villager"] * (len(players) - 2))
